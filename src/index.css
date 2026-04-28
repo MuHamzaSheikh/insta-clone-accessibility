@@ -1,0 +1,17 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply antialiased text-zinc-900 bg-zinc-50;
+    font-family: 'Inter', system-ui, sans-serif;
+  }
+}
+
+/* Tactile focus indicators for voice/keyboard users */
+:focus-visible {
+  outline: 4px solid #6B21A8;
+  outline-offset: 2px;
+  border-radius: 8px;
+}
