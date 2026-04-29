@@ -35,7 +35,7 @@ function MessengerIcon() {
   );
 }
 
-export default function Header() {
+export default function Header({ activePage = "Home", onNavigate }) {
   return (
     <header className="sticky top-0 z-30 border-b border-zinc-200 bg-white/95 backdrop-blur dark:border-zinc-800 dark:bg-zinc-950/95">
       <div className="mx-auto flex h-14 max-w-[470px] items-center justify-between px-4">
@@ -57,7 +57,12 @@ export default function Header() {
           <button
             type="button"
             aria-label="Messages"
-            className="rounded-full p-1.5 transition hover:bg-zinc-100 focus:outline-none focus:ring-2 focus:ring-pink-400 dark:hover:bg-zinc-800"
+            onClick={() => onNavigate?.("Messages")}
+            className={`rounded-full p-1.5 transition focus:outline-none focus:ring-2 focus:ring-pink-400 ${
+              activePage === "Messages"
+                ? "bg-zinc-900 text-white dark:bg-white dark:text-black"
+                : "hover:bg-zinc-100 dark:hover:bg-zinc-800"
+            }`}
           >
             <MessengerIcon />
           </button>

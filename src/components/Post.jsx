@@ -1,4 +1,5 @@
 import { useA11y } from "../context/AccessibilityContext";
+import { useMessages } from "../context/MessagesContext";
 
 function HeartIcon() {
   return (
@@ -43,8 +44,17 @@ function MoreIcon() {
   );
 }
 
+function DirectMessageIcon() {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="h-6 w-6" aria-hidden="true">
+      <path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H8l-2 2V4h14v12z" />
+    </svg>
+  );
+}
+
 export default function Post({ user, imageUrl, altText, caption, hashtags = [], comments = [] }) {
   const { announce } = useA11y();
+  const { startNewConversation, conversations } = useMessages();
 
   const handleLike = () => {
     if (typeof window !== "undefined" && window.navigator?.vibrate) {
@@ -57,6 +67,21 @@ export default function Post({ user, imageUrl, altText, caption, hashtags = [], 
     }
 
     announce(`Liked ${user}'s post`);
+  };
+
+  const handleMessage = () => {
+    // Check if conversation already exists
+    const existingConversation = conversations.find(conv => conv.user === user);
+    if (existingConversation) {
+      // If conversation exists, select it
+      window.dispatchEvent(new CustomEvent('openConversation', { detail: { conversationId: existingConversation.id } }));
+    } else {
+      // Create new conversation
+      const avatar = 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=100&h=100&fit=crop';
+      startNewConversation(user, avatar);
+      window.dispatchEvent(new CustomEvent('openMessaging', { detail: { user } }));
+    }
+    announce(`Opening message to ${user}`);
   };
 
   return (
@@ -121,6 +146,13 @@ export default function Post({ user, imageUrl, altText, caption, hashtags = [], 
               className="rounded-lg p-1 text-zinc-900 focus:ring-2 focus:ring-pink-400 dark:text-zinc-100"
             >
               <ChatIcon />
+            </button>
+            <button
+              onClick={handleMessage}
+              aria-label="Message post author"
+              className="rounded-lg p-1 text-zinc-900 focus:ring-2 focus:ring-pink-400 dark:text-zinc-100"
+            >
+              <DirectMessageIcon />
             </button>
             <button
               aria-label="Share post"

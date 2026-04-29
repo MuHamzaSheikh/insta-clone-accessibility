@@ -7,7 +7,9 @@ import VoiceControlPanel from "./components/VoiceControlPanel";
 import SearchPage from "./components/SearchPage";
 import ReelsPage from "./components/ReelsPage";
 import ProfilePage from "./components/ProfilePage";
+import MessagesPage from "./components/MessagesPage";
 import { AccessibilityProvider, useA11y } from "./context/AccessibilityContext";
+import { MessagesProvider } from "./context/MessagesContext";
 import { postsArr, storiesArr } from "./data/data";
 
 function MainContent() {
@@ -26,6 +28,8 @@ function MainContent() {
         return <ReelsPage />;
       case "Profile":
         return <ProfilePage />;
+      case "Messages":
+        return <MessagesPage />;
       case "Shop":
         return <SearchPage />;
       default:
@@ -55,7 +59,7 @@ function MainContent() {
           Voice Assist Active
         </div>
 
-        <Header activePage={activePage} />
+        <Header activePage={activePage} onNavigate={setActivePage} />
 
         <main data-page-container="true" className="flex-grow overflow-y-auto scroll-smooth">
           {renderPage()}
@@ -71,7 +75,9 @@ function MainContent() {
 export default function App() {
   return (
     <AccessibilityProvider>
-      <MainContent />
+      <MessagesProvider>
+        <MainContent />
+      </MessagesProvider>
     </AccessibilityProvider>
   );
 }

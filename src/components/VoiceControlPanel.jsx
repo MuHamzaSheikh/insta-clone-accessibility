@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useA11y } from "../context/AccessibilityContext";
+import { useMessages } from "../context/MessagesContext";
 
 function MicIcon() {
   return (
@@ -180,10 +181,68 @@ function speakProfileSummary(profile, speak) {
   );
 }
 
+function normalizeName(value = "") {
+  return value.toLowerCase().replace(/[_\s]+/g, " ").trim();
+}
+
+function parseDirectMessageCommand(command, conversations) {
+  const patterns = [
+    /^send message to (.+?) saying (.+)$/i,
+    /^send message to (.+?) (.+)$/i,
+    /^message (.+?) saying (.+)$/i,
+    /^message (.+?) (.+)$/i,
+    /^dm (.+?) saying (.+)$/i,
+    /^dm (.+?) (.+)$/i,
+    /^direct message (.+?) saying (.+)$/i,
+    /^direct message (.+?) (.+)$/i,
+    /^tell (.+?) (.+)$/i,
+  ];
+
+  for (const pattern of patterns) {
+    const match = command.match(pattern);
+
+    if (!match) {
+      continue;
+    }
+
+    const [, rawRecipient, rawMessage] = match;
+    const recipient = rawRecipient?.trim();
+    const message = rawMessage?.trim();
+
+    if (!recipient || !message) {
+      return null;
+    }
+
+    const recipientWords = normalizeName(recipient).split(" ").filter(Boolean);
+    const matchedConversation = conversations.find((conversation) => {
+      const conversationWords = normalizeName(conversation.user).split(" ").filter(Boolean);
+
+      return recipientWords.every((word) => conversationWords.includes(word));
+    });
+
+    return {
+      recipient,
+      message,
+      conversation: matchedConversation || null,
+    };
+  }
+
+  return null;
+}
+
 export default function VoiceControlPanel({ activePage = "Home", onNavigate }) {
   const { announce, speak } = useA11y();
+  const {
+    startNewConversation,
+    sendMessage,
+    conversations,
+    selectedConversation,
+    setSelectedConversation,
+  } = useMessages();
   const recognitionRef = useRef(null);
   const activePostRef = useRef(null);
+  const messageDraftRef = useRef("");
+  const messageRecipientRef = useRef("");
   const [isListening, setIsListening] = useState(false);
   const [lastCommand, setLastCommand] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
@@ -216,6 +275,7 @@ export default function VoiceControlPanel({ activePage = "Home", onNavigate }) {
       { page: "Reels", phrases: ["go to reels", "open reels", "reels page"] },
       { page: "Shop", phrases: ["go to shop", "open shop", "shop page"] },
       { page: "Profile", phrases: ["go to profile", "open profile", "profile page"] },
+      { page: "Messages", phrases: ["go to messages", "open messages", "messages page", "open dms", "direct messages"] },
     ];
 
     const matchedPage = pageCommands.find(({ phrases }) => matchesAny(command, phrases));
@@ -485,6 +545,9 @@ export default function VoiceControlPanel({ activePage = "Home", onNavigate }) {
         "describe this reel",
         "read this reel",
         "what is this reel about",
+        "Like this reel",
+        "explin this reel"
+
       ])
     ) {
       if (!currentItem || currentItem.type !== "reel") {
@@ -528,6 +591,188 @@ export default function VoiceControlPanel({ activePage = "Home", onNavigate }) {
 
       announce(opened ? "Activated profile action." : "I could not find that profile action.");
       return;
+    }
+
+    // Messaging commands
+    const directMessageCommand =
+      activePage === "Messages" ? parseDirectMessageCommand(command, conversations) : null;
+
+    if (directMessageCommand) {
+      const { recipient, message, conversation } = directMessageCommand;
+      const conversationId =
+        conversation?.id ||
+        startNewConversation(
+          recipient,
+          "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=100&h=100&fit=crop"
+        );
+
+      setSelectedConversation(conversationId);
+      sendMessage(conversationId, message);
+      messageDraftRef.current = "";
+      messageRecipientRef.current = "";
+      speak(`Message sent to ${conversation?.user || recipient}: ${message}`, { force: true });
+      return;
+    }
+
+    if (activePage === "Home" && currentPost && matchesAny(command, ["message", "message this user", "dm", "direct message", "send message"])) {
+      const avatar = 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=100&h=100&fit=crop';
+      startNewConversation(currentPost.user, avatar);
+      onNavigate?.("Messages");
+      announce(`Opening messages to ${currentPost.user}.`);
+      return;
+    }
+
+    if (matchesAny(command, ["open messages", "go to messages", "show messages"])) {
+      onNavigate?.("Messages");
+      announce("Opening messages.");
+      return;
+    }
+
+    if (activePage === "Messages" && matchesAny(command, ["list conversations", "show conversations", "who can i message"])) {
+      if (conversations.length === 0) {
+        announce("You have no conversations yet.");
+        return;
+      }
+
+      const conversationList = conversations.slice(0, 5).map(c => c.user).join(", ");
+      speak(`You have conversations with ${conversationList}${conversations.length > 5 ? " and more." : "."}`, { force: true });
+      return;
+    }
+
+    if (activePage === "Messages" && matchesAny(command, ["message compose", "start message", "compose message", "write message"])) {
+      messageDraftRef.current = "";
+      messageRecipientRef.current = "";
+      announce("Ready to compose. Say who you want to message, or dictate the message if a chat is already open.");
+      return;
+    }
+
+    if (
+      activePage === "Messages" &&
+      messageDraftRef.current !== "" &&
+      matchesAny(command, ["send", "send message", "send it"])
+    ) {
+      const messageText = messageDraftRef.current;
+      const conversationId = selectedConversation || conversations[0]?.id;
+      
+      if (conversationId) {
+        sendMessage(conversationId, messageText);
+        messageDraftRef.current = "";
+        messageRecipientRef.current = "";
+        speak(`Message sent: "${messageText}"`, { force: true });
+      } else {
+        announce("No conversation selected. Please select a conversation first.");
+      }
+      return;
+    }
+
+    if (activePage === "Messages" && matchesAny(command, ["clear message", "cancel message", "discard message"])) {
+      messageDraftRef.current = "";
+      messageRecipientRef.current = "";
+      announce("Message discarded.");
+      return;
+    }
+
+    if (activePage === "Messages" && matchesAny(command, ["read messages", "read conversation", "read recent messages", "what did they say"])) {
+      const firstConversation =
+        conversations.find((conversation) => conversation.id === selectedConversation) ||
+        conversations[0];
+      if (!firstConversation || !firstConversation.messages.length) {
+        announce("No messages to read.");
+        return;
+      }
+
+      const recentMessages = firstConversation.messages.slice(-3).map(msg => `${msg.sender} said: ${msg.text}`).join(". ");
+      speak(recentMessages, { force: true });
+      return;
+    }
+
+    if (
+      activePage === "Messages" &&
+      matchesAny(command, ["open chat with", "select chat with", "open conversation with"])
+    ) {
+      const recipient = command
+        .replace(/^.*?(open chat with|select chat with|open conversation with)\s+/i, "")
+        .trim();
+
+      const conversation = conversations.find((item) =>
+        normalizeName(item.user).includes(normalizeName(recipient))
+      );
+
+      if (!conversation) {
+        announce(`I could not find a conversation with ${recipient}.`);
+        return;
+      }
+
+      setSelectedConversation(conversation.id);
+      announce(`Opened conversation with ${conversation.user}.`);
+      return;
+    }
+
+    if (
+      activePage === "Messages" &&
+      matchesAny(command, ["message ", "send ", "say "]) &&
+      !matchesAny(command, ["send message to", "message compose", "send message", "say the"])
+    ) {
+      const selectedChat =
+        conversations.find((conversation) => conversation.id === selectedConversation) ||
+        conversations[0];
+
+      if (!selectedChat) {
+        announce("Choose a conversation first, or say send message to followed by the person's name and your message.");
+        return;
+      }
+
+      const draftText = transcript.trim();
+
+      if (!draftText) {
+        announce("I did not catch the message text.");
+        return;
+      }
+
+      messageDraftRef.current = draftText;
+      messageRecipientRef.current = selectedChat.user;
+      announce(`Drafted message for ${selectedChat.user}. Say send to deliver it.`);
+      return;
+    }
+
+    if (activePage === "Messages") {
+      const selectedChat =
+        conversations.find((conversation) => conversation.id === selectedConversation) ||
+        conversations[0];
+
+      if (
+        selectedChat &&
+        !matchesAny(command, [
+          "list conversations",
+          "show conversations",
+          "who can i message",
+          "read messages",
+          "read conversation",
+          "read recent messages",
+          "what did they say",
+          "clear message",
+          "cancel message",
+          "discard message",
+          "open messages",
+          "go to messages",
+          "show messages",
+          "next",
+          "previous",
+          "back",
+          "go back",
+          "top",
+          "go to top",
+          "back to top",
+          "where am i",
+          "what page is this",
+          "current page",
+        ])
+      ) {
+        messageDraftRef.current = transcript.trim();
+        messageRecipientRef.current = selectedChat.user;
+        announce(`Drafted message for ${selectedChat.user}. Say send to deliver it.`);
+        return;
+      }
     }
 
     if (matchesAny(command, ["next", "next post", "go next"])) {
@@ -621,11 +866,15 @@ export default function VoiceControlPanel({ activePage = "Home", onNavigate }) {
       setIsListening(false);
       recognitionRef.current = null;
       if (!lastCommand && !errorMessage) {
-        setStatusMessage(
-          activePage === "Home"
-            ? "Tap the mic and ask about the current post."
-            : `Tap the mic and ask about the ${activePage} page.`
-        );
+        const getHelpText = () => {
+          if (activePage === "Home") {
+            return "Tap the mic and ask about the current post, or say 'message' to DM the author.";
+          } else if (activePage === "Messages") {
+            return "Tap the mic and say 'list conversations', 'read messages', or 'compose message'.";
+          }
+          return `Tap the mic and ask about the ${activePage} page.`;
+        };
+        setStatusMessage(getHelpText());
       }
     };
 
